@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Rute Otomatis ke RS Terdekat</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css" />
+  <style>
+    #map { height: 100vh; }
+  </style>
+</head>
+<body>
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
+
+<script>
+  var map = L.map('map').setView([-7.8, 110.37], 13);
+
+  // Basemap
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap'
+  }).addTo(map);
+
+  // Daftar rumah sakit (dengan marker)
+  const rumahSakitList = [
+    { name: "RS Ludira Husada Tama", lat: -7.80108, lng: 110.34884 },
+    { name: "RS Bethesda", lat: -7.79135, lng: 110.37726 },
+    { name: "RS Panti Rapih", lat: -7.78449, lng: 110.37497 },
+    { name: "RS Bethesda Lempuyangan", lat: -7.80445, lng: 110.37157 },
+    { name: "RSU PKU Muhammadiyah", lat: -7.81104, lng: 110.36012 },
+    { name: "RSUD Kodya", lat: -7.84632, lng: 110.37694 },
+    { name: "RSI Hidayatullah", lat: -7.83760, lng: 110.38653 },
+    { name: "RS PKU Muhammadiyah Kotagede", lat: -7.84282, lng: 110.40077 },
+    { name: "RS Siloam Yogyakarta", lat: -7.79155, lng: 110.38969 },
+    { name: "RS Happy Land", lat: -7.80181, lng: 110.39002 },
+    { name: "RS Pratama", lat: -7.83842, lng: 110.37173 }
+  ];
+
+  rumahSakitList.forEach(rs => {
+    L.marker([rs.lat, rs.lng]).addTo(map).bindPopup(rs.name);
+  });
+
+  var kejadianMarker = null;
+  var routingControl = null;
+
+  // Saat klik peta
+  map.on('click', async function(e) {
+    const start = e.latlng;
+
+    if (kejadianMarker) map.removeLayer(kejadianMarker);
+    if (routingControl) map.removeControl(routingControl);
+
+    kejadianMarker = L.marker(start).addTo(map).bindPopup("Titik Kejadian").openPopup();
+
+    // Hitung rute ke semua RS, ambil yang tercepat
+    let bestRoute = null;
+    let minDuration = Infinity;
+
+    for (const rs of rumahSakitList) {
+      const url = `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${rs.lng},${rs.lat}?overview=false`;
+
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (data.routes && data.routes.length > 0) {
+        const duration = data.routes[0].duration;
+        if (duration < minDuration) {
+          minDuration = duration;
+          bestRoute = {
+            rs,
+            duration,
+          };
+        }
+      }
+    }
+
+    if (bestRoute) {
+      routingControl = L.Routing.control({
+        waypoints: [
+          start,
+          L.latLng(bestRoute.rs.lat, bestRoute.rs.lng)
+        ],
+        router: L.Routing.osrmv1({
+          serviceUrl: 'https://router.project-osrm.org/route/v1'
+        }),
+        createMarker: function(i, wp) {
+          if (i === 0) return L.marker(wp.latLng).bindPopup("Titik Kejadian");
+          else return L.marker(wp.latLng).bindPopup(bestRoute.rs.name + `<br>Durasi: ${(bestRoute.duration/60).toFixed(1)} menit`);
+        },
+        routeWhileDragging: false
+      }).addTo(map);
+    } else {
+      alert("Gagal menghitung rute ke rumah sakit.");
+    }
+  });
+</script>
+
+</body>
+</html>
